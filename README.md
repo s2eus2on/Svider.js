@@ -3,12 +3,11 @@ Svider.js
 
 Svider is a svelte slider, aimed at being customizable and fast.  Requires jQuery, compatible with 1.9+.
 
-# Usage 
+## Usage 
 
-Svider.js will work by automatically when you use the provided HTML and CSS, and include the jQuery and Svider.js.  
+Svider.js will work automatically when you include the provided HTML and CSS, and include the jQuery and Svider.js.  
 
-## HTML
-Here's an example of the setup used by Svider.js.
+### HTML
 
 	<div class="svider">
 		<div class="svider-nav">
@@ -33,16 +32,24 @@ Here's an example of the setup used by Svider.js.
 - **.svider-panels** - Holds the slider panels.  This handles the slider's animation.
 - **.svider-viewport** - Holds the panels container.  When overflow:hidden is used, it'll hide non-active panels.  This element can be removed if you don't mind the non-active panels being visible.
 
-## CSS
-The only CSS you have to customize is to set the width of your Svider, like this:
+### CSS - Customized
+The only CSS you have to customize is to the width of your Svider.  If only one panel is visible at a time, you can specify them together, like this:
 
 	#mySvider, #mySvider .svider-viewport, #mySvider .svider-panel {
 		width: 600px; 
 		// You must explicitly state the width for these 3 selectors for any svider element.  
 		// Change the ID to reflect your svider.  
-		// It must be the same width for all 3 selectors.
+		// It is most likely the same width for all 3 selectors.		
     }
 
+However, if your slider's panels are visible even when not active (as it common for centered sliders), you only need to set the .svider-panel: 
+
+	#mySvider .svider-panel {
+		width: 600px; 
+    }
+
+
+### CSS - Required
 Otherwise, include these styles to get the slider structure working.  
 
 	.svider { 
@@ -83,20 +90,20 @@ Otherwise, include these styles to get the slider structure working.
 	    cursor:default;
 	}
 	
-## JavaScript
+### JavaScript
 You shouldn't have to initialize on your own unless you want to pass in your own configuration.  Here's how you would do that - for example, to disable swipe controls.  When customizing a Svider, add the "custom" class so that Svider.js doesn't automatically initialize your Svider before you get the chance to.
 
-** Javascript code **
+**Javascript code - only when customizing defaults**
 
 	$("#mySvider").svider("init",function(){"swipe":false});
 
-** HTML for this example **
+**HTML - don't forget .custom**
 
 	<div class='svider custom'> . . . </div>
 
-# Customization options
+## Customization options
 
-The easiest way to customize a Svider is simply to add one of the following as a class on the .svider element.  For example, `<div class='svider autoplay clickToFocus autocenter'>. . .</div>` would create an autoplaying Svider which is centered on the page and allows you to click non-active panels to activate them.  (In addition to any navigational elements, and swiping, which is enabled by default.)
+Even easier than calling .svider dynamically is to add a class on the .svider element.  For example, `<div class='svider autoplay clickToFocus autocenter'>. . .</div>` would create an autoplaying Svider which is centered on the page and allows you to select a panel by clicking a non-active panel.
 
 * **autosize** - Automatically adjusts the height of your slider, in case different panels have different heights
 * **autoplay** - Automatically cycles through panels
@@ -105,14 +112,19 @@ The easiest way to customize a Svider is simply to add one of the following as a
 * **swipe** - Allows swipe to go back and forth.  Works with both touch or by dragging the mouse.  Enabled by default.
 
 
-# Methods
+## Methods
 
-* $("#mySvider").svider("next") - Go to the next panel
-* $("#mySvider").svider("prev") - Go to the previous panel
-* $("#mySvider").svider(#) - Replace the # with a number, and it'll go to this panel.  Use index position - so if you want to go to the first panel, you'll use 0 instead of 1.
-	* $("#mySvider").svider(1) - Go to the second panel (uses index position)
+If you'd like to interact with a Svider dynamically, you can use these methods.
 
-# Backwards Compatability
+* **A number** - Pass in a number and it'll go to this panel.  Use index position - so if you want to go to the first panel, you'll use 0 instead of 1.
+	* `$("#mySvider").svider(0)` - Goes to the first panel (uses index position)
+	* `$("#mySvider").svider(1)` - Goes to the second panel (uses index position)
+* **first** - Go to the first panel `$("#mySvider").svider("first")`
+* **last** - Go to the last panel `$("#mySvider").svider("last")`
+* **next** - Go to the next panel `$("#mySvider").svider("next")`
+* **prev** or **previous** - Go to the previous panel `$("#mySvider").svider("prev")`
+
+## Backwards Compatability
 
 Svider.js replaces [Marquee.js](http://github.com/Skotlake/Marquee.js). If you used that, no problem!  Svider.js is entirely backwards compatibile with one small catch - all references to "marquee" have been replace with "svider", meaning the classes have changed from marquee-panels to svider-panels, etc.  You don't have to update your HTML and CSS, though - just pass in a settings object when initializing your slider to overwrite the default used classes.
 
@@ -132,13 +144,13 @@ So in the above, you'd use ".marquee" instead of ".svider", ".marquee-nav" inste
 **Why is it called Svider?** 
 I wanted to emphasize speed and customizability, so I'm calling it Svider, the svelte slider.  In addition, the "marquee" name might be a bit confusing for those of us who used the **marquee** element back in the Geocities/Angelfire days.
 
-# Author - Scott Munn
+## Author - Scott Munn
 
 - [http://twitter.com/scottmunn](http://twitter.com/scottmunn)
 - [http://scottmunn.com](http://scottmunn.com)
 
 
-# Copyright and license
+## Copyright and license
 
 Copyright 2013 Scott Munn
 
