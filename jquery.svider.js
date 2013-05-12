@@ -3,7 +3,7 @@
  * Svider 
  * The svelte slider
  * @author Scott Munn
- * @version 1.0
+ * @version 1.1
  *
  * @description It's a slider.  But you can autoplay it, center it, swipe it, and customize it.  Go crazy. 
  *
@@ -28,6 +28,7 @@ var svider_default_settings = {
     'svider_caption' : 'svider_current_description', // CSS selector of the "svider's caption".  This will be automatically updated by either finding .caption in the .svider-nav LI (these will be automatically hidden on load) or by attaching a TITLE attribute to the LI
 	"orientation_event": "onorientationchange" in window ? "orientationchange" : "resize", // Sets up orientation change
     'resizable' : true, // If true, the .svider and .svider-viewport elements will resizable to the exact size of the active .svider-panel
+    "responsive_min_width":null, 	// Set this to prevent this from turning into a slider below this point
 	"selector" : { 						// Selectors for HTML elements
 		"slider":".svider",			// Overall slider container
 		"nav": ".svider-nav",			// Nav.  LI items become clickable
@@ -64,6 +65,29 @@ var svider_default_settings = {
 		    }); 
 		},
 		
+		destroy: function(options) {
+			// console.log("Destroying");
+			return this.each(function(){
+		        var svider = $(this);
+
+		        svider.addClass("svider-disabled").removeClass("hasBeensviderd").off("autocenter");
+		        var new_height = 0;
+		        
+
+		        svider.find(settings.selector.panels).children().each(function(){ new_height = new_height + $(this).outerHeight(); });
+		        svider.find(settings.selector.viewport).attr("data-svider-original-height",svider.find(settings.selector.viewport).height()).height(new_height);
+		        svider.find(settings.selector.panels).css("margin-left",0).attr("data-svider-original-height",svider.find(settings.selector.panels).height()).height(new_height);
+
+		        setTimeout(function(){ // Do the exact same thing in 1 second.  Happens to fast before resize is over
+		        	var new_height = 0;
+			        svider.find(settings.selector.panels).children().each(function(){ new_height = new_height + $(this).outerHeight(); });
+			        svider.find(settings.selector.viewport).attr("data-svider-original-height",svider.find(settings.selector.viewport).height()).height(new_height);
+			        svider.find(settings.selector.panels).css("margin-left",0).attr("data-svider-original-height",svider.find(settings.selector.panels).height()).height(new_height);
+		        },1000);
+		        
+		    });
+		},
+		
 		init: function(options) {
 			settings = new cloneObject(svider_default_settings);
 			// Makes this function watch the #hash on the browser URL bar
@@ -87,10 +111,10 @@ var svider_default_settings = {
 		        settings._m = $(svider);
 		        settings._id = svider.attr("id");
 		        
-				if (svider.hasClass("hasBeensviderd")) { /*// console.log("The following svider has already received instruction and will not receive further instruction."); // console.log(svider); */}
+				if (svider.hasClass("hasBeensviderd")) { /*// // console.log("The following svider has already received instruction and will not receive further instruction."); // // console.log(svider); */}
 				else {
 					svider.trigger("init");
-			        svider.addClass("hasBeensviderd");
+			        svider.addClass("hasBeensviderd").removeClass("svider-disabled");
 			        
 			        if (options) { $.extend(settings,options); } // Merge provided options with defaults
 
@@ -109,6 +133,7 @@ var svider_default_settings = {
 					if (settings.autosize)		{ methods.setup_autosize.apply(svider,[settings]); }
 					if (settings.clickToFocus) 	{ methods.setup_clickToFocus.apply(svider,[settings]); }
 					if (settings.swipe)			{ methods.setup_swipe.apply(svider,[settings]); }
+					if (settings.responsive_min_width) { methods.setup_responsive.apply(svider,[settings]); }
 
 			        svider.each(function(){
 			            var svider_instance = $(this),
@@ -165,7 +190,7 @@ var svider_default_settings = {
 		        switch(index) {
 		            case "initialize": // This is used when initializing a svider.  Prevents fade effect from occuring on load.
 		            	if (settings.autoselect) {
-		            		// console.log(settings);
+		            		// // console.log(settings);
 			            	current_index = -1;
 			                index = 0;
 			                settings.fade_text = false;
@@ -299,7 +324,7 @@ var svider_default_settings = {
 			            }
 			            methods.move_svider(travelTo,container,settings,panel_height,transition_speed,viewport);
 		        		        
-			        if (fix_height) { methods.update_svider_height(viewport,container,settings,panel_height); }
+			        if (fix_height && !svider.hasClass("svider-disabled")) { methods.update_svider_height(viewport,container,settings,panel_height); }
 			        if (nav) { methods.update_hashlinks(nav.find(settings.current_class).find("a").attr("href")); } // Update onpage links that link here
 			        
 			        setTimeout(function(){ svider.trigger("newPanel"); },300);
@@ -341,32 +366,34 @@ var svider_default_settings = {
 		previous:function(){ return $(this).each(function(){ methods.go.apply($(this),["prev",null,settings]); });},
 
 		setup_autocenter: function (settings) {
-			console.log("Settings up autocenter");
+			// console.log("Settings up autocenter");
 			if (this.attr("data-left-offset") == "center") {
 				var new_offset = ($(window).width() - this.find(settings.selector.panel).width())/2;
 				this.attr("data-left-offset",new_offset).addClass("leftOffsetCentered");
 				
 				var leftOffsetCentered_timeout;
-				$(window).on(settings.orientation_event,function(){
+
+				$(".leftOffsetCentered").on("autocenter",function(){
+					el = $(this);
+					var new_offset = ($(window).width() - el.find(settings.selector.panel).width())/2;
+					el.attr("data-left-offset",new_offset).addClass("leftOffsetCentered");
+					methods.go.apply(el,[settings.css_active_name,null,settings]);
+				});
+
+
+				$(window).on(settings.orientation_event+".autocenter",function(){
 					clearTimeout(leftOffsetCentered_timeout);
 					leftOffsetCentered_timeout = setTimeout(function(){
 						// Fix auto-centered sviders
-						var centers = $(".leftOffsetCentered");
-						$.each(centers,function(i,el){
-							el = $(el);
-							var new_offset = ($(window).width() - el.find(settings.selector.panel).width())/2;
-							el.attr("data-left-offset",new_offset).addClass("leftOffsetCentered");
-							methods.go.apply(el,[settings.css_active_name,null,settings]);
-						});
-		
+						$(".leftOffsetCentered").trigger("autocenter");
 					},200);
 				});
-		
+				
 			}
 		},
 
 		setup_autoplay: function(settings) {
-			console.log("Settings up autoplay");
+			// console.log("Settings up autoplay");
 			return this.each(function(){    
 				var svider_instance = $(this);
 		
@@ -410,11 +437,11 @@ var svider_default_settings = {
 		},
 
 		setup_autosize: function (settings) {
-			console.log("Checking autosize");
+			// console.log("Checking autosize");
 
 			return this.each(function(){
 				if (settings.autosize) {
-					console.log("Setting up autosize");
+					// console.log("Setting up autosize");
 
 					var new_width = svider.width();
 
@@ -438,7 +465,7 @@ var svider_default_settings = {
 		},
 
 		setup_clickToFocus: function(settings) {
-			console.log("Settings up clickToFocus");
+			// console.log("Settings up clickToFocus");
 			return this.each(function(){
 				
 				$(this).find(settings.selector.panel).on("click",function(){
@@ -448,7 +475,7 @@ var svider_default_settings = {
 						me.trigger("clickToFocus")
 						methods.go.apply(me,[$(this).index()]);
 					} else {
-						// console.log("prevented");
+						// // console.log("prevented");
 					}
 				});
 			
@@ -554,11 +581,36 @@ var svider_default_settings = {
 	        }
 		},
 		
+		setup_responsive: function(settings) {
+			return this.each(function(){
+				var svider = $(this);
+				if (settings.responsive_min_width != null) {
+					// console.log(settings.responsive_min_width);
+					$(window).on(settings.orientation_event+".responsive",function(){
+						
+						if ($(window).width() < settings.responsive_min_width) {
+							if (!svider.hasClass("svider-disabled")) {
+								// console.log("Disabling svider");
+								methods.destroy.apply(svider,[]);
+							}
+						}
+						
+						if ($(window).width() > settings.responsive_min_width) {
+							if (svider.hasClass("svider-disabled")) {
+								methods.init.apply(svider,[]);
+								// console.log("Enabling svider - build me");
+							}
+						}
+					});
+				}				
+			});
+		},
+		
 		setup_swipe: function (settings) {
 			var svider = $(this);
 			//if (settings.swipe && !settings.clickToFocus) {
 			if (settings.swipe) {
-				console.log("Setting up swipe");
+				// console.log("Setting up swipe");
 		        svider.on(settings.touch_start_event,function(e){
 		
 		        	$(this).addClass("touching");
@@ -607,7 +659,7 @@ var svider_default_settings = {
 					if (Math.abs(x_change) > Math.abs(y_change)) { // Ensures only swipes intended to be horizontal are registered
 		   				if (Math.abs(x_change) > settings.swipe_threshold) {
 		   					svider.addClass("swiping");
-		   					// console.log("swipe registered");
+		   					// // console.log("swipe registered");
 		       				svider.trigger("swiped");
 		       				if (x_swipe == "left") { 
 		       					if (svider.find(settings.selector.panel).filter(settings.current_class).index() != 0) { 
@@ -628,11 +680,11 @@ var svider_default_settings = {
 		       						svider_moved = true; 
 			       					
 		       					} else { // Bounce effect on the end (last panel)
-		       						console.log();
+		       						// console.log();
 		       						var orig = parseInt(svider.find(settings.selector.panels).css("margin-left"));
 		       						svider.find(settings.selector.panels).animate({"margin-left":(orig - 40)}, settings.transition_speed/2).animate({"margin-left":(orig)}, settings.transition_speed, (jQuery.easing['easeOutBounce']) ? "easeOutBounce" : settings.easing); svider_moved = true; }
 		       				}		       				
-		   				} else { console.log("No");}
+		   				} else { // console.log("No");}
 					} else {
 						// Y change was greater than x change	
 					}
@@ -700,7 +752,7 @@ var svider_default_settings = {
 		    	if (typeof method == "number") {
 			    	// Let's check if we should change the activate panel
 			    	var svider_instance = $(this);
-			    	console.log(svider_instance.find(settings.selector.panel).length);
+			    	// console.log(svider_instance.find(settings.selector.panel).length);
 			    	if (svider_instance.find(settings.selector.panel).length >= method+1) {
 				    	methods.go.apply(svider_instance,[method,null,settings]);
 				    	error_msg = false;
@@ -719,14 +771,19 @@ var svider_default_settings = {
 	}
 
 		
-	if ($(svider_default_settings.selector.slider).is(".fade").length > 0 ) { 
-		$(svider_default_settings.selector.slider).is(".fade").not(".custom").svider("init",{"hide_transitions":true}); 
-	} 
-	
-	if ($(svider_default_settings.selector.slider).not(".fade").not(".custom").length > 0) {
-		$(svider_default_settings.selector.slider).not(".fade").not(".custom").svider();
-		// If you have .custom sviders, you must call them yourself
-	}
+	$(document).ready(function(){
+		if ($(svider_default_settings.selector.slider).is(".fade").length > 0 ) { 
+			$(svider_default_settings.selector.slider).is(".fade").not(".custom").svider("init",{"hide_transitions":true}); 
+		} 
+		
+		if ($(svider_default_settings.selector.slider).not(".fade").not(".custom").length > 0) {
+			$(svider_default_settings.selector.slider).not(".fade").not(".custom").svider();
+			// If you have .custom sviders, you must call them yourself
+		}
+		
+		$(window).trigger(settings.orientation_event);
+		
+	});
 
 }(jQuery));
 
@@ -736,6 +793,8 @@ if (typeof cloneObject !=='function'){function cloneObject(e){for(i in e){if(typ
 /// HISTORY ///
 ///////////////
 /**
+ * 1.1
+ * - Adds support for a mobile / responsive breakpoint, which disables/reenables a slider at this width.
  * 1.0
  * - Replaces Marquee.js.  Cleans up code base, moves to proper jQuery plugin architecture, and fixes some issues that remained: clickToFocus sliders could not be swiped, and last panels did not bounce (swiping would activate "next", which would go to the beginning)
  **/
