@@ -109,6 +109,7 @@ Even easier than calling .svider dynamically is to add a class on the .svider el
 * **autoplay** - Automatically cycles through panels
 * **autocenter** - For layouts where the slider is centered, this automatically figures out how to position itself
 * **clickToFocus** - When enabled, clicking on a non-active panel will make it become activate
+* **infinite** - An "infinite" carousel always wraps around from the same direction by hiding transitions (for example, when going from end of carousel back to start)
 * **swipe** - Allows swipe to go back and forth.  Works with both touch or by dragging the mouse.  Enabled by default.
 
 
@@ -148,6 +149,16 @@ I wanted to emphasize speed and customizability, so I'm calling it Svider, the s
 
 - [http://twitter.com/scottmunn](http://twitter.com/scottmunn)
 - [http://scottmunn.com](http://scottmunn.com)
+
+## Changelog
+
+- 1.2
+	- Adds support for infinite carousel.  Use "infinite" class on your carousel.
+- 1.1
+	- Adds support for a mobile / responsive breakpoint, which disables/reenables a slider at this width.
+	- BUG: When a disabled slider is re-enabled, navigation events are stacked
+- 1.0
+	- Replaces Marquee.js.  Cleans up code base, moves to proper jQuery plugin architecture, and fixes some issues that remained: clickToFocus sliders could not be swiped, and last panels did not bounce (swiping would activate "next", which would go to the beginning)
 
 
 ## Copyright and license

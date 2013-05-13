@@ -3,7 +3,7 @@
  * Svider 
  * The svelte slider
  * @author Scott Munn
- * @version 1.0
+ * @version 1.2
  *
  * @description It's a slider.  But you can autoplay it, center it, swipe it, and customize it.  Go crazy. 
  *
@@ -25,15 +25,19 @@ var svider_default_settings = {
     'fade_text_selectors' : "h1,.summary", // jQuery selectors, CSS selectors of text that will fade in/out, fade_text must be true
     'hide_transitions' : false, // bool.  True = "fade" transition.  False = "slide" transition
 	"hover_activate": false, // Determine whether hovering over LI should auto-activate
+	"infinite":true,			// Whether this should be an infinite carousel - always comes from right
     'svider_caption' : 'svider_current_description', // CSS selector of the "svider's caption".  This will be automatically updated by either finding .caption in the .svider-nav LI (these will be automatically hidden on load) or by attaching a TITLE attribute to the LI
 	"orientation_event": "onorientationchange" in window ? "orientationchange" : "resize", // Sets up orientation change
     'resizable' : true, // If true, the .svider and .svider-viewport elements will resizable to the exact size of the active .svider-panel
+    "responsive_min_width":600, 	// Set this to prevent this from turning into a slider below this point
 	"selector" : { 						// Selectors for HTML elements
 		"slider":".svider",			// Overall slider container
 		"nav": ".svider-nav",			// Nav.  LI items become clickable
 		"panel":".svider-panel",		// Single panel
 		"panels":".svider-panels",		// Holds all panels
-		"viewport":".svider-viewport" 	// Viewport, duh
+		"viewport":".svider-viewport", 	// Viewport, duh
+		//
+		"infinite_jump_panel":"svider-animative-panel" // Used for infinite carousel.  "Jumps" when this panel is moved away from
 	},
 	"swipe": true, // Determines whether to allow swiping	
 	"swipe_threshold":30, // Minimum pixel threshold to activate a swipe
@@ -58,10 +62,40 @@ var svider_default_settings = {
 		        var item = $(this),
 		            svider = $(this).parents(settings.selector.slider).first(), // The containing svider
 		            index = $(this).index(); // Figure out numeric value of element clicked
+		        
+		        
+		        if (settings.infinite) {
+			        var panel = $(svider.find(settings.selector.panel).get(index));
+			        if (panel.attr("data-clone-panel-index") != undefined) {
+				        index = parseInt(panel.attr('data-clone-panel-index'),10);
+			        }
+		        }
 		
 		        item.addClass(settings.css_active_name);
 		        methods.go.apply(svider,[index,null,settings]);
 		    }); 
+		},
+		
+		destroy: function(options) {
+			return this.each(function(){
+		        var svider = $(this);
+
+		        svider.addClass("svider-disabled").removeClass("hasBeensviderd").off("autocenter");
+		        var new_height = 0;
+		        
+
+		        svider.find(settings.selector.panels).children().each(function(){ new_height = new_height + $(this).outerHeight(); });
+		        svider.find(settings.selector.viewport).attr("data-svider-original-height",svider.find(settings.selector.viewport).height()).height(new_height);
+		        svider.find(settings.selector.panels).css("margin-left",0).attr("data-svider-original-height",svider.find(settings.selector.panels).height()).height(new_height);
+
+		        setTimeout(function(){ // Do the exact same thing in 1 second.  Happens to fast before resize is over
+		        	var new_height = 0;
+			        svider.find(settings.selector.panels).children().each(function(){ new_height = new_height + $(this).outerHeight(); });
+			        svider.find(settings.selector.viewport).attr("data-svider-original-height",svider.find(settings.selector.viewport).height()).height(new_height);
+			        svider.find(settings.selector.panels).css("margin-left",0).attr("data-svider-original-height",svider.find(settings.selector.panels).height()).height(new_height);
+		        },1000);
+		        
+		    });
 		},
 		
 		init: function(options) {
@@ -87,10 +121,10 @@ var svider_default_settings = {
 		        settings._m = $(svider);
 		        settings._id = svider.attr("id");
 		        
-				if (svider.hasClass("hasBeensviderd")) { /*// console.log("The following svider has already received instruction and will not receive further instruction."); // console.log(svider); */}
+				if (svider.hasClass("hasBeensviderd")) { }
 				else {
 					svider.trigger("init");
-			        svider.addClass("hasBeensviderd");
+			        svider.addClass("hasBeensviderd").removeClass("svider-disabled");
 			        
 			        if (options) { $.extend(settings,options); } // Merge provided options with defaults
 
@@ -103,12 +137,14 @@ var svider_default_settings = {
 					if (svider.hasClass("no-autoselect")) { settings.autoselect = false; } else { settings.autoselect = true; }
 					
 					methods.setup_controls.apply(svider,[settings]);
-
+					
 					if (settings.autocenter)	{ methods.setup_autocenter.apply(svider,[settings]); }
 					if (settings.autoplay)		{ methods.setup_autoplay.apply(svider,[settings]); }
 					if (settings.autosize)		{ methods.setup_autosize.apply(svider,[settings]); }
 					if (settings.clickToFocus) 	{ methods.setup_clickToFocus.apply(svider,[settings]); }
+					if (settings.infinite)		{ methods.setup_infinite.apply(svider,[settings]);}
 					if (settings.swipe)			{ methods.setup_swipe.apply(svider,[settings]); }
+					if (settings.responsive_min_width) { methods.setup_responsive.apply(svider,[settings]); }
 
 			        svider.each(function(){
 			            var svider_instance = $(this),
@@ -143,12 +179,19 @@ var svider_default_settings = {
 				}
 		    });
 		},
-		
-		go: function(index,force_panel,my_settings) {
+		/**
+		 * @param index			- the index of the panel to go.  Also: next, prev, current, initialize, random
+		 * @param force_panel	- Used to force a specific panel
+		 * @param my_settings	- Custom settings object
+		 * @param no_transition - Hides transition; useful for infinite carousel/instant transitions
+		 * @param ignore_jump	- Ignores "jump" logic for infinite carousels
+		 **/
+		go: function(index,force_panel,my_settings,no_transition,ignore_jump) {
+			// console.log("Going: "+index);
 			if (my_settings == undefined) {
 				var settings = new cloneObject(svider_default_settings);
 			} else {
-				var settings = my_settings;
+				var settings = new cloneObject(my_settings);
 			}
 		    if (index == null) { index = 0; }
 
@@ -160,14 +203,24 @@ var svider_default_settings = {
 		            current_index = svider.find(settings.selector.panels).first().children(settings.current_class).index(),
 		            total_index = svider.find(settings.selector.panels).first().children(settings.selector.panel).length - 1;
 		        if (current_index == -1) { current_index = 0; } // -1 is given when none exists
+		        
+		        if (svider.is(".infinite")) { settings.infinite = true; }
+		        if (no_transition == true) {
+			        settings.transition_speed = 1;
+		        }
 
 		        // Parse the index value    
 		        switch(index) {
 		            case "initialize": // This is used when initializing a svider.  Prevents fade effect from occuring on load.
 		            	if (settings.autoselect) {
-		            		// console.log(settings);
 			            	current_index = -1;
 			                index = 0;
+			                
+			                if (settings.infinite) {
+			                	var me = svider.find(settings.selector.panel).get(index);
+				                index = $(me).addClass(settings.selector.infinite_jump_panel).attr("data-clone-panel-index");
+			                }
+			                
 			                settings.fade_text = false;
 			                var temp_hide_trans = true;
 			                var fix_height = true;
@@ -219,12 +272,12 @@ var svider_default_settings = {
 		            break;
 		        }
 		        
-		        if (index == null) { return false; }
+		        if (index == null) { return false; } else { index = parseInt(index,10);}
 
 		        svider.addClass("has-selection").removeClass("current-page-first current-page-last");
-			
-		        if (svider.is(".infinite")) {
-			    	methods.setup_infinite.apply(svider,[settings,index,total_index]);    
+		        
+		        if (settings.infinite) {
+			    	//methods.setup_infinite.apply(svider,[settings,index,total_index]);    
 		        } else {
 			        if (index < 0) { index = total_index;} // Fix values that are too low
 			        if (index > total_index) { index = 0;} // Fix values that are too high
@@ -250,6 +303,7 @@ var svider_default_settings = {
 		                // 				exterior panels
 		
 		    
+		    
 		            // Update travelTo
 						if (leftOffset && leftOffset != "center") { travelTo = travelTo - leftOffset;}
 						
@@ -259,7 +313,13 @@ var svider_default_settings = {
 			            
 		            // Update navigation
 			            nav.find(settings.current_class).removeClass(settings.css_active_name); // Remove current from direct nav
-			            nav.find("li:eq("+index+")").addClass(settings.css_active_name); // Give new current item the current class
+			            var item = nav.find("li:eq("+index+")");
+			            if (item.length == 0 ) {
+			            	// Check for infinite
+			            	var nav_index = parseInt(panel.attr("data-original-panel-index"),10);
+			            	item = nav.find("li:eq("+nav_index+")");
+			            }
+			            item.addClass(settings.css_active_name); // Give new current item the current class
 		
 			        // Update svider classes & trigger event
 			        	if (index == 0) {
@@ -297,9 +357,47 @@ var svider_default_settings = {
 			            } else {
 			            	var transition_speed = settings.transition_speed
 			            }
-			            methods.move_svider(travelTo,container,settings,panel_height,transition_speed,viewport);
-		        		        
-			        if (fix_height) { methods.update_svider_height(viewport,container,settings,panel_height); }
+			            
+			            
+			            var transition_already_happened = false; // Used by left infinite animation
+			            
+			            // Check for infinite animation, previous (moving to left)
+			            if (!ignore_jump) {
+				            if (current_index > index && panel.hasClass(settings.selector.infinite_jump_panel)) {
+					            var i = parseInt(panel.attr("data-clone-panel-index"),10);
+					            // console.log("Checking left jump");
+				            	if (i != undefined) {
+				            		// console.log("Left jump needed");
+					            	var me = panel.closest(settings.selector.panels).children(settings.selector.panel).get(i);
+					            	methods.go.apply(svider,[i+1,i+1,settings,true,true]);
+					            	// console.log("Left jump happened");
+					            	methods.go.apply(svider,[i,i,settings]);	
+					            	transition_already_happened = true;
+				            	}
+				            }
+			            }
+			            
+			            /// Move the panel!!		            
+			            if (!transition_already_happened) {
+			            	// console.log("Transition has not happened yet");
+				        	methods.move_svider(travelTo,container,settings,panel_height,transition_speed,viewport);    
+				        	
+   				            // Check for infinite animation, next (moving to right)
+				        	if (!ignore_jump) {
+					            if (current_index < index && panel.hasClass(settings.selector.infinite_jump_panel)) {
+					            	var i = panel.attr("data-original-panel-index");
+					            	if (i != undefined) {
+					            		// console.log("Right jump needed");
+						            	var me = panel.closest(settings.selector.panels)
+						            		.children(settings.selector.panel).get(i);
+						            	methods.go.apply(svider,[i,i,settings,true,true]);
+						            	// console.log("Jumping - next"); 
+					            	} 
+					            }
+				        	}
+			            }
+			            		        		        
+			        if (fix_height && !svider.hasClass("svider-disabled")) { methods.update_svider_height(viewport,container,settings,panel_height); }
 			        if (nav) { methods.update_hashlinks(nav.find(settings.current_class).find("a").attr("href")); } // Update onpage links that link here
 			        
 			        setTimeout(function(){ svider.trigger("newPanel"); },300);
@@ -327,6 +425,10 @@ var svider_default_settings = {
 		move_svider: function(travelTo,container,settings,panel_height,speed,viewport) {
 
 			container.animate({"margin-left": travelTo}, speed, settings.easing, function () {
+			
+	            
+
+			
 				if (settings.resizable == true && panel_height) {
 					container.animate({"height": panel_height+"px"}, (speed/2));
 					if (viewport != undefined) {
@@ -341,32 +443,33 @@ var svider_default_settings = {
 		previous:function(){ return $(this).each(function(){ methods.go.apply($(this),["prev",null,settings]); });},
 
 		setup_autocenter: function (settings) {
-			console.log("Settings up autocenter");
 			if (this.attr("data-left-offset") == "center") {
 				var new_offset = ($(window).width() - this.find(settings.selector.panel).width())/2;
 				this.attr("data-left-offset",new_offset).addClass("leftOffsetCentered");
 				
 				var leftOffsetCentered_timeout;
-				$(window).on(settings.orientation_event,function(){
+
+				$(".leftOffsetCentered").on("autocenter",function(){
+					el = $(this);
+					var new_offset = ($(window).width() - el.find(settings.selector.panel).width())/2;
+					el.attr("data-left-offset",new_offset).addClass("leftOffsetCentered");
+					methods.go.apply(el,[settings.css_active_name,null,settings]);
+				});
+
+
+				$(window).on(settings.orientation_event+".autocenter",function(){
 					clearTimeout(leftOffsetCentered_timeout);
 					leftOffsetCentered_timeout = setTimeout(function(){
 						// Fix auto-centered sviders
-						var centers = $(".leftOffsetCentered");
-						$.each(centers,function(i,el){
-							el = $(el);
-							var new_offset = ($(window).width() - el.find(settings.selector.panel).width())/2;
-							el.attr("data-left-offset",new_offset).addClass("leftOffsetCentered");
-							methods.go.apply(el,[settings.css_active_name,null,settings]);
-						});
-		
+						$(".leftOffsetCentered").trigger("autocenter");
 					},200);
 				});
-		
+				
 			}
 		},
 
 		setup_autoplay: function(settings) {
-			console.log("Settings up autoplay");
+			// console.log("Setting up autoplay");
 			return this.each(function(){    
 				var svider_instance = $(this);
 		
@@ -410,12 +513,8 @@ var svider_default_settings = {
 		},
 
 		setup_autosize: function (settings) {
-			console.log("Checking autosize");
-
 			return this.each(function(){
 				if (settings.autosize) {
-					console.log("Setting up autosize");
-
 					var new_width = svider.width();
 
 					svider.addClass("autosized").find(settings.selector.panel)
@@ -438,7 +537,6 @@ var svider_default_settings = {
 		},
 
 		setup_clickToFocus: function(settings) {
-			console.log("Settings up clickToFocus");
 			return this.each(function(){
 				
 				$(this).find(settings.selector.panel).on("click",function(){
@@ -448,7 +546,6 @@ var svider_default_settings = {
 						me.trigger("clickToFocus")
 						methods.go.apply(me,[$(this).index()]);
 					} else {
-						// console.log("prevented");
 					}
 				});
 			
@@ -519,46 +616,63 @@ var svider_default_settings = {
 		    });
 		},
 
-		setup_infinite: function(svider,settings,index,total_index) {
-			// If the "infinite" class is applied to the svider, the LI elements will be cloned so that it appears the carousel always continues in one direction.
-	        // However, this currently only goes forward -- if looping backward from the first, it will loop all the way back.
-	        if (svider.hasClass("infinite") == true) {
-	            var panels_container = svider.find(settings.selector.panels).first(),
-	            	panels = $(panels_container).children(settings.selector.panel),
-	            	container_width = panels_container.width();
-	            	
-	            if (svider.attr("data-infinite-buffer")) {
-		            var buffered_index = parseInt(svider.attr("data-infinite-buffer")) + index;
-	            } else {
-		            var buffered_index = index;
-	            }
-	            if (buffered_index == total_index || buffered_index > total_index) { // End, going to beginning // Change > to == on 5/4/12, builds infinite one ahead of when needed
-	                panels.clone().appendTo(panels_container);
-	                panels_container.width(container_width*2);
-	                total_index = (total_index * 2) + 1;
-	            }
-	            
-	            if (index < 0) { // beginning, going to end
-	                index = total_index;
-	              
-	                panels.clone().prependTo(panels_container);
-	                panels_container.width(container_width*2);
-	                
-	                total_index = (total_index * 2) + 1;
-	                index = total_index;
-	                var temp_hide_trans = true; // Because we don't want the user to see all the panels, hide the transition
-	            } 
-	        } else {
-	            if (index < 0) { index = total_index;} // Fix values that are too low
-	            if (index > total_index) { index = 0;} // Fix values that are too high
-	        }
+		setup_infinite: function(settings,index,total_index) {
+			// console.log("Setting up infinite carousel");
+			var svider = $(this);
+			var panels = svider.find(settings.selector.panels);
+			
+			// Figure out how many panels should be cloned
+			var viewport_width = svider.find(settings.selector.viewport).width();
+			var panel_width = svider.find(settings.selector.panel).width();
+			var extra_panels = Math.ceil(viewport_width / panel_width)+1;
+			
+			var clones = panels.children(settings.selector.panel).slice(0,extra_panels).clone();
+			clones.each(function(i,el){
+				var me = $(this);
+				me.addClass("svider-clone-panel");
+				me.attr("data-original-panel-index",i);
+				var original = panels.children(settings.selector.panel).get(i);
+				if (i < (extra_panels-1)) {
+					// Only add this any panels except the last.  This helps the numeric navigation
+					// navigate to the clone panel in order to help animations.
+					// We don't ever want to go to the last panel because it ruins the animation
+					$(original).attr("data-clone-panel-index",panels.children(settings.selector.panel).length+i);	
+				}
+				
+				if (i == (extra_panels - 2)) { // Uses 2 instead of 1 for index position; 2nd to last panel
+					me.addClass(settings.selector.infinite_jump_panel);
+				}
+			});
+			
+			clones.appendTo(panels);
+		},
+		
+		setup_responsive: function(settings) {
+			return this.each(function(){
+				var svider = $(this);
+				if (settings.responsive_min_width != null) {
+					$(window).on(settings.orientation_event+".responsive",function(){
+						
+						if ($(window).width() < settings.responsive_min_width) {
+							if (!svider.hasClass("svider-disabled")) {
+								methods.destroy.apply(svider,[]);
+							}
+						}
+						
+						if ($(window).width() > settings.responsive_min_width) {
+							if (svider.hasClass("svider-disabled")) {
+								methods.init.apply(svider,[]);
+							}
+						}
+					});
+				}				
+			});
 		},
 		
 		setup_swipe: function (settings) {
 			var svider = $(this);
 			//if (settings.swipe && !settings.clickToFocus) {
 			if (settings.swipe) {
-				console.log("Setting up swipe");
 		        svider.on(settings.touch_start_event,function(e){
 		
 		        	$(this).addClass("touching");
@@ -607,7 +721,6 @@ var svider_default_settings = {
 					if (Math.abs(x_change) > Math.abs(y_change)) { // Ensures only swipes intended to be horizontal are registered
 		   				if (Math.abs(x_change) > settings.swipe_threshold) {
 		   					svider.addClass("swiping");
-		   					// console.log("swipe registered");
 		       				svider.trigger("swiped");
 		       				if (x_swipe == "left") { 
 		       					if (svider.find(settings.selector.panel).filter(settings.current_class).index() != 0) { 
@@ -628,11 +741,10 @@ var svider_default_settings = {
 		       						svider_moved = true; 
 			       					
 		       					} else { // Bounce effect on the end (last panel)
-		       						console.log();
 		       						var orig = parseInt(svider.find(settings.selector.panels).css("margin-left"));
 		       						svider.find(settings.selector.panels).animate({"margin-left":(orig - 40)}, settings.transition_speed/2).animate({"margin-left":(orig)}, settings.transition_speed, (jQuery.easing['easeOutBounce']) ? "easeOutBounce" : settings.easing); svider_moved = true; }
 		       				}		       				
-		   				} else { console.log("No");}
+		   				} else { }
 					} else {
 						// Y change was greater than x change	
 					}
@@ -700,7 +812,6 @@ var svider_default_settings = {
 		    	if (typeof method == "number") {
 			    	// Let's check if we should change the activate panel
 			    	var svider_instance = $(this);
-			    	console.log(svider_instance.find(settings.selector.panel).length);
 			    	if (svider_instance.find(settings.selector.panel).length >= method+1) {
 				    	methods.go.apply(svider_instance,[method,null,settings]);
 				    	error_msg = false;
@@ -719,14 +830,19 @@ var svider_default_settings = {
 	}
 
 		
-	if ($(svider_default_settings.selector.slider).is(".fade").length > 0 ) { 
-		$(svider_default_settings.selector.slider).is(".fade").not(".custom").svider("init",{"hide_transitions":true}); 
-	} 
-	
-	if ($(svider_default_settings.selector.slider).not(".fade").not(".custom").length > 0) {
-		$(svider_default_settings.selector.slider).not(".fade").not(".custom").svider();
-		// If you have .custom sviders, you must call them yourself
-	}
+	$(document).ready(function(){
+		if ($(svider_default_settings.selector.slider).is(".fade").length > 0 ) { 
+			$(svider_default_settings.selector.slider).is(".fade").not(".custom").svider("init",{"hide_transitions":true}); 
+		} 
+		
+		if ($(svider_default_settings.selector.slider).not(".fade").not(".custom").length > 0) {
+			$(svider_default_settings.selector.slider).not(".fade").not(".custom").svider();
+			// If you have .custom sviders, you must call them yourself
+		}
+		
+		$(window).trigger(svider_default_settings.orientation_event);
+		
+	});
 
 }(jQuery));
 
@@ -736,6 +852,13 @@ if (typeof cloneObject !=='function'){function cloneObject(e){for(i in e){if(typ
 /// HISTORY ///
 ///////////////
 /**
+ * 1.2
+ * - Adds support for infinite carousel.  Use "infinite" class on your carousel.
+ *
+ * 1.1
+ * - Adds support for a mobile / responsive breakpoint, which disables/reenables a slider at this width.
+ * - BUG: When a disabled slider is re-enabled, navigation events are stacked
+ *
  * 1.0
  * - Replaces Marquee.js.  Cleans up code base, moves to proper jQuery plugin architecture, and fixes some issues that remained: clickToFocus sliders could not be swiped, and last panels did not bounce (swiping would activate "next", which would go to the beginning)
  **/
