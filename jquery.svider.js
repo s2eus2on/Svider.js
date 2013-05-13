@@ -65,10 +65,39 @@ var svider_default_settings = {
 		        
 		        
 		        if (settings.infinite) {
+		        	var current = svider.find(settings.selector.panel).filter(".current");
+		        	
+		        	current_index = current.attr("data-original-panel-index") ? current.attr('data-original-panel-index') : current.index();
+		        	
+		        	if (current_index > index) {
+			        	var direction = "right";
+		        	} else if (current_index < index) {
+			        	var direction = "left";
+		        	} else {
+			        	var direction = "nowhere";
+		        	}
 			        var panel = $(svider.find(settings.selector.panel).get(index));
+			        
+			        
+			        // Figure out the correct actual/cloned panel to use.
+			        // Includes some logic to make the transition more logical 
 			        if (panel.attr("data-clone-panel-index") != undefined) {
-				        index = parseInt(panel.attr('data-clone-panel-index'),10);
+			        	if (direction == "right") {
+				        	if (current_index < index) {
+					        	index = parseInt(panel.attr('data-clone-panel-index'),10);
+					        	// console.log("Jumping right");
+				        	}
+				        	
+			        	} else if (direction == "left") {
+			        		if (current_index < index) {
+	   					        index = parseInt(panel.attr('data-clone-panel-index'),10);
+	   					        // console.log("Jumping left");
+			        		}
+			        	}
+				        
 			        }
+			        //if (current_index > index) { console.log("Should be moving right");}
+			        //else { console.log("Should be moving left");}
 		        }
 		
 		        item.addClass(settings.css_active_name);
